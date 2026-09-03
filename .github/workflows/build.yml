@@ -1,0 +1,66 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build signed debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'zulu'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # RN 0.81 + Expo 54 (New Architecture) 가 NDK 27 요구.
+      # GitHub-hosted runner 는 sdkmanager 로 정식 NDK 받기 — 로컬에서 본 `build/` 누락 문제 없음.
+      - name: Install NDK 27.0.12077973 + CMake 3.22.1
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+          ls $ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}
+
+      - name: Install Dependencies
+        run: npm install --force --no-audit --no-fund
+
+      # android/ 는 .gitignore 라 매번 expo prebuild 로 재생성
+      - name: Expo prebuild (generate native android/)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build Android Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solaever-wallet-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
