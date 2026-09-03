@@ -1,0 +1,106 @@
+name: Android Release APK
+
+on:
+  push:
+    branches: [main, 260531]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build signed release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java 21 (Gradle 8.14+ 호환)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'zulu'
+
+      # Android SDK + cmdline-tools + platform-tools 자동 설치
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # RN 0.81 + Expo 54 (New Architecture) 가 NDK 27 강제.
+      # GitHub-hosted runner 는 sdkmanager 로 정식 NDK 받음 — 로컬에서 본 `build/` 폴더 누락 문제 없음.
+      - name: Install NDK 27.0.12077973
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+          # build/cmake/android.toolchain.cmake 존재 확인 — 로컬에서 빠졌던 그 파일
+          ls $ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}
+
+      # `--force` — peerDeps 충돌 무시 (RN ecosystem 의 표준 패턴)
+      - name: Install dependencies
+        run: npm install --force --no-audit --no-fund
+
+      # android/ 폴더는 .gitignore 라 매번 재생성. --clean 으로 깨끗이.
+      - name: Expo prebuild (generate native android/)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      # release block 도 debug.keystore 로 sign — app/build.gradle 의 default.
+      # 프로덕션 배포 시 별도 keystore 발급 권장 (GitHub Secrets 로 inject)
+      - name: Build Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g
+
+      - name: Verify signature (v2 scheme)
+        run: |
+          BUILD_TOOLS=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
+          $BUILD_TOOLS/apksigner verify --verbose android/app/build/outputs/apk/release/*.apk | head -5
+
+      - name: Rename APK with version
+        id: rename
+        run: |
+          mkdir -p _apk
+          VER=$(node -p "require('./package.json').version")
+          SHA=${GITHUB_SHA::7}
+          OUT="_apk/SolaEverWallet-v${VER}-${SHA}.apk"
+          cp android/app/build/outputs/apk/release/*.apk "$OUT"
+          ls -la "$OUT"
+          echo "apk=$OUT" >> $GITHUB_OUTPUT
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolaEverWallet-release-${{ github.sha }}
+          path: ${{ steps.rename.outputs.apk }}
+          retention-days: 90
+
+      # workflow_dispatch 또는 tag push 시 GitHub Release 도 자동 생성
+      - name: Create GitHub Release
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.rename.outputs.apk }}
+          tag_name: build-${{ github.run_number }}
+          name: SolaEver Wallet Release ${{ github.run_number }}
+          body: |
+            자동 빌드 — SolaEver Wallet release APK.
+
+            **포함된 기능 (260531)**
+            - mint 주소 입력 시 Metaplex metadata 자동 fetch (이름·티커·이미지)
+            - AsyncStorage 24h 캐시
+            - RN 0.81 + Expo 54 + New Architecture
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

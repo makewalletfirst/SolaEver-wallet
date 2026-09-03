@@ -1,0 +1,16 @@
+{
+  "name": "sBEC",
+  "symbol": "sBEC",
+  "description": "sBEC on SolaEver",
+  "image": "https://raw.githubusercontent.com/makewalletfirst/SolaEver-wallet/main/tokens/sbec/icon.png",
+  "external_url": "https://solaever.ever-chain.xyz",
+  "properties": {
+    "files": [
+      {
+        "uri": "https://raw.githubusercontent.com/makewalletfirst/SolaEver-wallet/main/tokens/sbec/icon.png",
+        "type": "image/png"
+      }
+    ],
+    "category": "image"
+  }
+}

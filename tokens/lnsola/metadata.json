@@ -1,0 +1,13 @@
+{
+  "name": "LNsola",
+  "symbol": "lnSOLA",
+  "description": "LNsola — Lightning-themed token on SolaEver L1",
+  "image": "https://raw.githubusercontent.com/makewalletfirst/SolaEver-wallet/260531/tokens/lnsola/icon.png",
+  "external_url": "https://solaever.ever-chain.xyz",
+  "properties": {
+    "files": [
+      { "uri": "https://raw.githubusercontent.com/makewalletfirst/SolaEver-wallet/260531/tokens/lnsola/icon.png", "type": "image/png" }
+    ],
+    "category": "image"
+  }
+}
